@@ -20,6 +20,18 @@ static char *server_capabilities_v1;
 static struct strvec server_capabilities_v2 = STRVEC_INIT;
 static const char *next_server_feature_value(const char *feature, int *len, int *offset);
 
+/*
+ * Ensure the connection child (ssh, proxy, or local git) is reaped on
+ * any exit path, mirroring the transport-helper.c atexit pattern.
+ */
+static struct child_process *conn_to_reap;
+
+static void cleanup_conn_on_exit(void)
+{
+	if (conn_to_reap)
+		finish_command(conn_to_reap);
+}
+
 static int check_ref(const char *name, unsigned int flags)
 {
 	if (!flags)
@@ -991,6 +1003,8 @@ static struct child_process *git_proxy_connect(int fd[2], char *host)
 	proxy->out = -1;
 	if (start_command(proxy))
 		die(_("cannot start proxy %s"), git_proxy_command);
+	conn_to_reap = proxy;
+	atexit(cleanup_conn_on_exit);
 	fd[0] = proxy->out; /* read from proxy stdout */
 	fd[1] = proxy->in;  /* write to proxy stdin */
 	return proxy;
@@ -1449,6 +1463,8 @@ struct child_process *git_connect(int fd[2], const char *url,
 
 		if (start_command(conn))
 			die(_("unable to fork"));
+		conn_to_reap = conn;
+		atexit(cleanup_conn_on_exit);
 
 		fd[0] = conn->out; /* read from child's stdout */
 		fd[1] = conn->in;  /* write to child's stdin */
@@ -1466,6 +1482,7 @@ int finish_connect(struct child_process *conn)
 		return 0;
 
 	code = finish_command(conn);
+	conn_to_reap = NULL;
 	free(conn);
 	return code;
 }

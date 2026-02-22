@@ -17,6 +17,14 @@
 
 static int debug;
 
+static struct child_process *helper_to_reap;
+
+static void cleanup_helper_on_exit(void)
+{
+	if (helper_to_reap)
+		finish_command(helper_to_reap);
+}
+
 struct helper_data {
 	const char *name;
 	struct child_process *helper;
@@ -147,6 +155,8 @@ static struct child_process *get_helper(struct transport *transport)
 		exit(code);
 
 	data->helper = helper;
+	helper_to_reap = helper;
+	atexit(cleanup_helper_on_exit);
 	data->no_disconnect_req = 0;
 	refspec_init(&data->rs, REFSPEC_FETCH);
 
@@ -249,6 +259,7 @@ static int disconnect_helper(struct transport *transport)
 		close(data->helper->out);
 		fclose(data->out);
 		res = finish_command(data->helper);
+		helper_to_reap = NULL;
 		FREE_AND_NULL(data->helper);
 	}
 	return res;
