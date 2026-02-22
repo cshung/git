@@ -1475,6 +1475,17 @@ struct child_process *git_connect(int fd[2], const char *url,
 	return conn;
 }
 
+/*
+ * Reap the connection's child process (e.g. ssh or git-remote-*).
+ *
+ * NOTE: callers that die() or exit() before reaching finish_connect()
+ * will leave the child un-waited. In a container where this process is
+ * PID 1, that child becomes a zombie — the same class of bug that was
+ * fixed in transport-helper.c with an atexit handler. The SSH transport
+ * path here is similarly vulnerable: if the caller hits a fatal error
+ * after git_connect() but before finish_connect(), the SSH child is
+ * never reaped.
+ */
 int finish_connect(struct child_process *conn)
 {
 	int code;

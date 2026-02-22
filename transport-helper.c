@@ -154,6 +154,15 @@ static struct child_process *get_helper(struct transport *transport)
 	else if (code != 0)
 		exit(code);
 
+	/*
+	 * get_helper() starts the transport helper child process (e.g.
+	 * git-remote-https). Many code paths below call exit(128) on
+	 * error without going through disconnect_helper(), which is the
+	 * only place finish_command() (i.e. waitpid) is called. When
+	 * this process is PID 1 in a container, the un-waited helper
+	 * child becomes a zombie. The atexit handler ensures the helper
+	 * is reaped on any exit path.
+	 */
 	data->helper = helper;
 	helper_to_reap = helper;
 	atexit(cleanup_helper_on_exit);
@@ -258,6 +267,11 @@ static int disconnect_helper(struct transport *transport)
 		close(data->helper->in);
 		close(data->helper->out);
 		fclose(data->out);
+		/*
+		 * This is the normal cleanup path. finish_command() calls
+		 * waitpid() on the helper. Clear helper_to_reap so the
+		 * atexit handler does not double-wait.
+		 */
 		res = finish_command(data->helper);
 		helper_to_reap = NULL;
 		FREE_AND_NULL(data->helper);

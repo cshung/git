@@ -24,6 +24,22 @@ void child_process_clear(struct child_process *child)
 	strvec_clear(&child->env);
 }
 
+/*
+ * Child process cleanup on exit/signal.
+ *
+ * When child processes are started via start_command(), they are registered
+ * in the children_to_clean list via mark_child_for_cleanup(). An atexit
+ * handler (cleanup_children_on_exit) and a signal handler
+ * (cleanup_children_on_signal) ensure these children are killed and reaped
+ * if this process exits abnormally (e.g. via die() or exit()) before
+ * finish_command() is called. On the normal path, finish_command() calls
+ * clear_child_for_cleanup() to deregister the child so the atexit handler
+ * becomes a no-op for that child.
+ *
+ * This pattern — register on start, deregister on normal finish, reap via
+ * atexit on abnormal exit — is reused in transport-helper.c for the
+ * transport helper child process.
+ */
 struct child_to_clean {
 	pid_t pid;
 	struct child_process *process;
